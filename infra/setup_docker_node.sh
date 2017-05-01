@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -e
 
 function usage() {
     echo "Usage: $0 REMOTE_HOST"
@@ -12,7 +12,29 @@ function error() {
 
 [ ! -z "$1" ] && REMOTE_HOST=$1 || usage
 
-echo "Copying PUB key to remote host..."
+pushd `dirname $0`
+
+echo "Copying pub-key to remote host..."
 ssh-copy-id root@${REMOTE_HOST}
+
 echo "Installing Docker..."
-ssh root@${REMOTE_HOST} 'bash -s' < <(curl -s https://gist.githubusercontent.com/cr0hn/68643930f8b5ae293f9cfc5c5f495d29/raw/eca7367462d7d63cdf930fe12136ad4ff159ae90/install_docker_ubuntu.sh)
+ssh root@${REMOTE_HOST} 'bash -s' < install_docker.sh
+
+echo "Preparing Flannel..."
+if [ ! -f flannel/dist/flanneld-amd64 ]; then
+    [ -d flannel ] || git clone --branch v0.5.6 --single-branch --depth 1 https://github.com/coreos/flannel.git
+    cp -f Flannel.Makefile flannel/Makefile
+    pushd flannel
+    echo "Building Flannel..."
+    make dist/iptables-amd64
+    make dist/flanneld-amd64
+    popd
+fi
+echo "Deploying flanneld..."
+scp flannel/dist/flanneld-amd64 root@${REMOTE_HOST}:/usr/local/bin/
+
+echo "Installing etcd..."
+ssh root@${REMOTE_HOST} 'apt-get install -y etcd=2.2.5+dfsg-1'
+
+
+ssh root@${REMOTE_HOST} 'apt-get install -y bridge-utils'
