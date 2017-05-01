@@ -31,7 +31,7 @@ if [ ! -f flannel/dist/flanneld-amd64 ]; then
     popd
 fi
 echo "Deploying flanneld..."
-scp flannel/dist/flanneld-amd64 root@${REMOTE_HOST}:/usr/local/bin/
+ssh root@${REMOTE_HOST} 'ls /usr/local/bin/flanneld-amd64' || scp flannel/dist/flanneld-amd64 root@${REMOTE_HOST}:/usr/local/bin/
 
 echo "Installing etcd..."
 ssh root@${REMOTE_HOST} 'apt-get install -y etcd=2.2.5+dfsg-1'
