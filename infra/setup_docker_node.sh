@@ -17,24 +17,22 @@ pushd `dirname $0`
 echo "Copying pub-key to remote host..."
 ssh-copy-id root@${REMOTE_HOST}
 
-echo "Installing Docker..."
-ssh root@${REMOTE_HOST} 'bash -s' < install_docker.sh
-
-echo "Preparing Flannel..."
-if [ ! -f flannel/dist/flanneld-amd64 ]; then
-    [ -d flannel ] || git clone --branch v0.5.6 --single-branch --depth 1 https://github.com/coreos/flannel.git
-    cp -f Flannel.Makefile flannel/Makefile
-    pushd flannel
-    echo "Building Flannel..."
-    make dist/iptables-amd64
-    make dist/flanneld-amd64
-    popd
-fi
-echo "Deploying flanneld..."
-ssh root@${REMOTE_HOST} 'ls /usr/local/bin/flanneld-amd64' || scp flannel/dist/flanneld-amd64 root@${REMOTE_HOST}:/usr/local/bin/
-
-echo "Installing etcd..."
-ssh root@${REMOTE_HOST} 'apt-get install -y etcd=2.2.5+dfsg-1'
+echo "Updating OS..."
+# ssh root@${REMOTE_HOST} 'yum update -y && yum clean all'
+ssh root@${REMOTE_HOST} 'bash -s' < ubuntu_kernel.sh
+# ssh root@${REMOTE_HOST} 'apt-get update -y && apt-get upgrade -y'
 
 
-ssh root@${REMOTE_HOST} 'apt-get install -y bridge-utils'
+# echo "Installing Docker..."
+# ssh root@${REMOTE_HOST} 'bash -s' < install_docker.sh
+
+# echo "Deploying flanneld..."
+# ssh root@${REMOTE_HOST} 'ls /usr/local/bin/flanneld || curl -o /usr/local/bin/flanneld -L "https://github.com/coreos/flannel/releases/download/v0.6.2/flanneld-amd64" && chmod 0744 /usr/local/bin/flanneld'
+
+# echo "Installing etcd..."
+# ssh root@${REMOTE_HOST} 'apt-get install -y etcd=2.2.5+dfsg-1'
+
+# ssh root@${REMOTE_HOST} 'apt-get install -y bridge-utils'
+
+# echo "Installing Kubernetes Master..."
+# ssh root@${REMOTE_HOST} 'bash -s' < setup_k8s_master.sh
