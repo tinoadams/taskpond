@@ -1,174 +1,50 @@
-variable "public_key_path" {
-  description = <<DESCRIPTION
-Path to the SSH public key to be used for authentication.
-Ensure this keypair is added to your local SSH agent so provisioners can
-connect.
-Example: ~/.ssh/terraform.pub
-DESCRIPTION
+variable "scaleway_api_key" {}
+
+variable "scaleway_access_token" {}
+
+variable "gateway_count" {
+  default = 1
 }
 
-variable "key_name" {
-  description = "Desired name of AWS key pair"
+provider "scaleway" {
+  organization = "${var.scaleway_api_key}"
+  token        = "${var.scaleway_access_token}"
+  region       = "par1"
 }
 
-variable "aws_region" {
-  description = "AWS region to launch servers."
-  default     = "us-west-2"
+data "scaleway_bootscript" "docker" {
+  architecture = "x86_64"
+  name_filter  = "docker"
 }
 
-# Ubuntu Precise 12.04 LTS (x64)
-variable "aws_amis" {
-  default = {
-    eu-west-1 = "ami-b1cf19c6"
-    us-east-1 = "ami-de7ab6b6"
-    us-west-1 = "ami-3f75767a"
-    us-west-2 = "ami-21f78e11"
-  }
+resource "scaleway_ip" "public_ip" {
+  count = "${var.gateway_count}"
+  server = "${element(scaleway_server.gateway.*.id, count.index)}"
 }
 
-# Specify the provider and access details
-provider "aws" {
-  region = "${var.aws_region}"
-}
-
-# Create a VPC to launch our instances into
-resource "aws_vpc" "default" {
-  cidr_block = "10.0.0.0/16"
-}
-
-# Create an internet gateway to give our subnet access to the outside world
-resource "aws_internet_gateway" "default" {
-  vpc_id = "${aws_vpc.default.id}"
-}
-
-# Grant the VPC internet access on its main route table
-resource "aws_route" "internet_access" {
-  route_table_id         = "${aws_vpc.default.main_route_table_id}"
-  destination_cidr_block = "0.0.0.0/0"
-  gateway_id             = "${aws_internet_gateway.default.id}"
-}
-
-# Create a subnet to launch our instances into
-resource "aws_subnet" "default" {
-  vpc_id                  = "${aws_vpc.default.id}"
-  cidr_block              = "10.0.1.0/24"
-  map_public_ip_on_launch = true
-}
-
-# A security group for the ELB so it is accessible via the web
-resource "aws_security_group" "elb" {
-  name        = "terraform_example_elb"
-  description = "Used in the terraform"
-  vpc_id      = "${aws_vpc.default.id}"
-
-  # HTTP access from anywhere
-  ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  # outbound internet access
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-}
-
-# Our default security group to access
-# the instances over SSH and HTTP
-resource "aws_security_group" "default" {
-  name        = "terraform_example"
-  description = "Used in the terraform"
-  vpc_id      = "${aws_vpc.default.id}"
-
-  # SSH access from anywhere
-  ingress {
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  # HTTP access from the VPC
-  ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["10.0.0.0/16"]
-  }
-
-  # outbound internet access
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-}
-
-resource "aws_elb" "web" {
-  name = "terraform-example-elb"
-
-  subnets         = ["${aws_subnet.default.id}"]
-  security_groups = ["${aws_security_group.elb.id}"]
-  instances       = ["${aws_instance.web.id}"]
-
-  listener {
-    instance_port     = 80
-    instance_protocol = "http"
-    lb_port           = 80
-    lb_protocol       = "http"
-  }
-}
-
-resource "aws_key_pair" "auth" {
-  key_name   = "${var.key_name}"
-  public_key = "${file(var.public_key_path)}"
-}
-
-resource "aws_instance" "web" {
-  # The connection block tells our provisioner how to
-  # communicate with the resource (instance)
+resource "scaleway_server" "gateway" {
+  count = "${var.gateway_count}"
+  name  = "gateway_${count.index}"
+  image = "89457135-d446-41ba-a8df-d53e5bb54710"
+  bootscript = "${data.scaleway_bootscript.docker.id}"
+  type  = "C2S"
   connection {
-    # The default username for our AMI
-    user = "ubuntu"
-
-    # The connection will use the local SSH agent for authentication.
+    private_key = "${file("ssh/deployer")}"
   }
-
-  instance_type = "m1.small"
-
-  # Lookup the correct AMI based on the region
-  # we specified
-  ami = "${lookup(var.aws_amis, var.aws_region)}"
-
-  # The name of our SSH keypair we created above.
-  key_name = "${aws_key_pair.auth.id}"
-
-  # Our Security group to allow HTTP and SSH access
-  vpc_security_group_ids = ["${aws_security_group.default.id}"]
-
-  # We're going to launch into the same subnet as our ELB. In a production
-  # environment it's more common to have a separate private subnet for
-  # backend instances.
-  subnet_id = "${aws_subnet.default.id}"
-
-  # We run a remote provisioner on the instance after creating it.
-  # In this case, we just install nginx and start it. By default,
-  # this should be on port 80
   provisioner "remote-exec" {
     inline = [
-      "sudo apt-get -y update",
-      "sudo apt-get -y install nginx",
-      "sudo service nginx start",
+      "apt-get update",
+      "apt-get upgrade -y",
+      "curl https://releases.rancher.com/install-docker/1.12.sh | sh",
+      "docker run -d --restart=unless-stopped -p 8080:8080 rancher/server",
     ]
   }
 }
 
-output "address" {
-  value = "${aws_elb.web.dns_name}"
+output "gateway_public_ip" {
+  value = "${join(",", scaleway_server.gateway.*.public_ip)}"
+}
+
+output "gateway_private_ip" {
+  value = "${join(",", scaleway_server.gateway.*.private_ip)}"
 }
