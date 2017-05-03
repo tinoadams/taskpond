@@ -1,20 +1,13 @@
-variable "scaleway_api_key" {}
-
-variable "scaleway_access_token" {}
-
 variable "gateway_count" {
-  default = 1
+  default = 2
 }
 
-provider "scaleway" {
-  organization = "${var.scaleway_api_key}"
-  token        = "${var.scaleway_access_token}"
-  region       = "par1"
+variable "bastion_host" {
+  default = "163.172.172.59"
 }
 
-data "scaleway_bootscript" "docker" {
-  architecture = "x86_64"
-  name_filter  = "docker"
+variable "instance_type" {
+  default = "c1"
 }
 
 resource "scaleway_ip" "public_ip" {
@@ -22,29 +15,28 @@ resource "scaleway_ip" "public_ip" {
   server = "${element(scaleway_server.gateway.*.id, count.index)}"
 }
 
+data "scaleway_bootscript" "gateway_bootscript" {
+  architecture = "x86_64" // arm, x86_64
+  name_filter  = "docker"
+}
+
+data "scaleway_image" "gateway_image" {
+  architecture = "x86_64" // arm, x86_64
+  name_filter  = "Xenial"
+}
+
 resource "scaleway_server" "gateway" {
   count = "${var.gateway_count}"
   name  = "gateway_${count.index}"
-  image = "89457135-d446-41ba-a8df-d53e5bb54710"
-  bootscript = "${data.scaleway_bootscript.docker.id}"
-  type  = "C2S"
-  connection {
-    private_key = "${file("ssh/deployer")}"
-  }
-  provisioner "remote-exec" {
-    inline = [
-      "apt-get update",
-      "apt-get upgrade -y",
-      "curl https://releases.rancher.com/install-docker/1.12.sh | sh",
-      "docker run -d --restart=unless-stopped -p 8080:8080 rancher/server",
-    ]
-  }
+  image = "${data.scaleway_image.gateway_image.id}"
+  bootscript = "${data.scaleway_bootscript.gateway_bootscript.id}"
+  type  = "C2S" // C1 (arm), C2S, C2M, C2L
 }
 
 output "gateway_public_ip" {
-  value = "${join(",", scaleway_server.gateway.*.public_ip)}"
+  value = "${join(" , ", scaleway_ip.public_ip.*.ip)}"
 }
 
 output "gateway_private_ip" {
-  value = "${join(",", scaleway_server.gateway.*.private_ip)}"
+  value = "${join(" , ", scaleway_server.gateway.*.private_ip)}"
 }
