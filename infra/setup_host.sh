@@ -15,11 +15,11 @@ function error() {
 REMOTE_USER=root
 
 function runCmdOnRemoteHost() {
-    ssh -i ${DEPLOYER_KEY_FILE} ${REMOTE_USER}@${REMOTE_HOST} "$1"
+    ssh -A ${REMOTE_USER}@${REMOTE_HOST} "$1"
 }
 
 function runScriptOnRemoteHost() {
-    ssh -i ${DEPLOYER_KEY_FILE} ${REMOTE_USER}@${REMOTE_HOST} 'bash -s' < $1
+    ssh -A ${REMOTE_USER}@${REMOTE_HOST} 'bash -s' < $1
 }
 
 pushd `dirname $0`

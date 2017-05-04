@@ -1,5 +1,5 @@
-TERRAFORM_CMD := docker run -i -t -e SCALEWAY_TOKEN="$(SCALEWAY_TOKEN)" -e SCALEWAY_ORGANIZATION="$(SCALEWAY_ORGANIZATION)" -v $(PWD)/infra:$(PWD)/infra -w $(PWD)/infra hashicorp/terraform:0.9.4
-RESOURCE?=""
+TERRAFORM_CMD := cd infra && terraform
+RESOURCE?=
 
 # infra/ssh/deployer:
 /home/vagrant/.ssh/deployer:
@@ -8,17 +8,21 @@ RESOURCE?=""
 	echo
 	read -p "Now publish /home/vagrant/.ssh/deployer.pub to the hosting provider... then press enter to continue" bogus
 
-infra-show:
+dockerme:
+	curl -o dockerme 'https://gist.githubusercontent.com/tinoadams/c300f7cd75c93c606f75f305329ad8e5/raw/2e13ee375e4b632fcfb9378a1aa180a9eb3ce5a4/dockerme'
+	chmod +x dockerme
+
+infra-show: dockerme
 	$(TERRAFORM_CMD) show
 
-infra-plan:
+infra-plan: dockerme
 	$(TERRAFORM_CMD) plan
 
-infra-apply: /home/vagrant/.ssh/deployer
+infra-apply: dockerme /home/vagrant/.ssh/deployer
 	$(TERRAFORM_CMD) apply
 
-infra-destroy:
+infra-destroy: dockerme
 	$(TERRAFORM_CMD) destroy -force $(RESOURCE)
 
-infra-taint:
+infra-taint: dockerme
 	$(TERRAFORM_CMD) taint $(RESOURCE)
